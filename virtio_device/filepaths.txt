@@ -1,0 +1,6 @@
+/qemu-2.3.0/include/hw/virtio/virtio-cuda.h
+/qemu-2.3.0/hw/char/Makefile.objs
+/qemu-2.3.0/hw/char/virtio-cuda.c
+/qemu-2.3.0/hw/virtio/virtio-pci.c
+/qemu-2.3.0/hw/virtio/virtio-pci.h
+/qemu-2.3.0/Makefile.target
