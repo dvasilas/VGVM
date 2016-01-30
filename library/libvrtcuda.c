@@ -444,9 +444,9 @@ cudaError_t cudaDeviceSynchronize (void) {
 }
 
 void __cudaUnregisterFatBinary() {
-	//CUresult cuCtxSynchronize(void)
 	//not supported for the moment
 /*
+	//CUresult cuModuleUnload(CUmodule hmod)
         if(ioctl(libdata.fd,CUMODULEUNLOAD, &libdata.p)) {
                 perror("ioctl");
                 exit(1);

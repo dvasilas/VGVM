@@ -16,7 +16,7 @@ extern struct wait_struct wait_data;
 struct cuda_device *gcudev;
 
 //interrupt handler
-//get available buffers from virtqueue and add them in list
+//gets available buffers from virtqueue and adds them in list
 static void vq_has_data(struct virtqueue *vq)
 {
 #ifdef SLEEP

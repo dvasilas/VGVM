@@ -22,6 +22,13 @@ struct memcpy_data {
 	void *data;
 	long size;
 };
+
+/*
+ * Two implementation when waiting backend to execute routine and return results
+ * sleep : interruptible state until intrrupt is received
+ * busy_wait : check if a buffer is pushed avaible in a loop
+*/
+
 //called when process wakes up
 //checks if the buffer we are waiting for is in the list and deletes it
 #ifdef SLEEP
