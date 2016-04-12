@@ -5,5 +5,5 @@ VGVM is an open-source framework which enables CUDA applications to execute with
 VGVM uses paravirtualization and API forwarding techniques in order to enable CUDA applications executing in virtual environments to access the physical GPU. 
 
 To summarize, VGVM offers the following advantages:
-• It enables GPU resource sharing among co-located VMs.
-• It maintains binary compatibility, so that existing applications can use our framework without any source code modification.
+- It enables GPU resource sharing among co-located VMs.
+- It maintains binary compatibility, so that existing applications can use our framework without any source code modification.
