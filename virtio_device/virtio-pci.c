@@ -1483,8 +1483,6 @@ static void virtio_pci_bus_new(VirtioBusState *bus, size_t bus_size,
 */
     char virtio_bus_name[] = "virtio-bus";
 
-    DEBUG_IN();
-    printf("  virtio_pci_bus_new(%s)\n", bus->parent_obj.name);
 
     qbus_create_inplace(bus, bus_size, TYPE_VIRTIO_PCI_BUS, qdev,
                         virtio_bus_name);
@@ -1526,7 +1524,6 @@ static void virtio_cuda_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
     DeviceState *proxy = DEVICE(vpci_dev);
     char *bus_name;
 
-	DEBUG_IN();
 
     if (vpci_dev->class_code != PCI_CLASS_COMMUNICATION_OTHER &&
         vpci_dev->class_code != PCI_CLASS_DISPLAY_OTHER && /* qemu 0.10 */
@@ -1534,16 +1531,6 @@ static void virtio_cuda_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
             vpci_dev->class_code = PCI_CLASS_COMMUNICATION_OTHER;
     }
 
-//    /* backwards-compatibility with machines that were created with
-//       DEV_NVECTORS_UNSPECIFIED */
-//    if (vpci_dev->nvectors == DEV_NVECTORS_UNSPECIFIED) {
-//        vpci_dev->nvectors = dev->vdev.serial.max_virtserial_ports + 1;
-//    }
-
-    /*
-     * For command line compatibility, this sets the virtio-serial-device bus
-     * name as before.
-     */
     if (proxy->id) {
         bus_name = g_strdup_printf("%s.0", proxy->id);
         virtio_device_set_child_bus_name(VIRTIO_DEVICE(vdev), bus_name);
@@ -1553,12 +1540,6 @@ static void virtio_cuda_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
     qdev_set_parent_bus(vdev, BUS(&vpci_dev->bus));
     object_property_set_bool(OBJECT(vdev), true, "realized", errp);
 
-/*
-    if (qdev_init(vdev) < 0) {
-        return -1;
-    }
-    return 0;
-*/
 }
 
 static Property virtio_cuda_pci_properties[] = {
@@ -1566,13 +1547,6 @@ static Property virtio_cuda_pci_properties[] = {
                     VIRTIO_PCI_FLAG_USE_IOEVENTFD_BIT, true),
     DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors, 2),
     DEFINE_PROP_UINT32("class", VirtIOPCIProxy, class_code, 0),
-/*
-    DEFINE_VIRTIO_COMMON_FEATURES(VirtIOPCIProxy, host_features),
-	DEFINE_PROP_BIT("indirect_desc", _state, _field, \
-                        VIRTIO_RING_F_INDIRECT_DESC, true),
-        DEFINE_PROP_BIT("event_idx", VirtIOPCIProxy, flags, \
-                        VIRTIO_RING_F_EVENT_IDX, true),
-*/
     DEFINE_VIRTIO_SERIAL_PROPERTIES(VirtIOSerialPCI, vdev.serial),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -1594,10 +1568,8 @@ static void virtio_cuda_pci_class_init(ObjectClass *klass, void *data)
 static void virtio_cuda_pci_instance_init(Object *obj)
 {
     VirtIOCudaPCI *dev = VIRTIO_CUDA_PCI(obj);
-	DEBUG_IN();
     virtio_instance_init_common(obj, &dev->vdev, sizeof(dev->vdev),
                                 "virtio-cuda");
-    //object_initialize(&dev->vdev, sizeof(dev->vdev), "virtio-cuda");
     object_property_add_child(obj, "virtio-backend", OBJECT(&dev->vdev), NULL);
 }
 

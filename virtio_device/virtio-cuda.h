@@ -2,16 +2,6 @@
 #define VIRTIO_CUDA_H
 
 #include <cuda.h>
-
-#define DEBUG(str) \
-	printf("[VIRTIO-CUDA] FILE[%s] LINE[%d] FUNC[%s] STR[%s]\n", \
-	       __FILE__, __LINE__, __func__, str);
-
-#define DEBUG_IN() printf("[VIRTIO-CUDA] FILE[%s] LINE[%d] FUNC[%s] STR[%s]\n", \
-               __FILE__, __LINE__, __func__, "IN");
-#define debug_print(fmt, ...) \
-            do { printf(fmt, __VA_ARGS__); } while (0)
-
 //used to distinguish between CUDA Driver calls
 #define CUINIT                          0
 #define CUDRIVERGETVERSION              1
@@ -29,24 +19,27 @@
 #define CUMODULELOAD                    14
 #define CUMEMALLOC                      15
 #define CUMEMCPYHTOD                    16
-#define CUMEMCPYHTOD1                   17
-#define CUMEMCPYHTOD2                   18
-#define CUMEMCPYDTOH                    19
-#define CUMEMCPYDTOH1                   20
-#define CUMEMSETD32                     21
-#define CUMEMFREE                       22
-#define CUMODULEGETFUNCTION             23
-#define CULAUNCHKERNEL                  24
-#define CUCTXSYNCHRONIZE                25
-#define CUEVENTCREATE                   26
-#define CUEVENTRECORD                   27
-#define CUEVENTSYNCHRONIZE              28
-#define CUEVENTELAPSEDTIME              29
-#define CUMEMCPYHTODV2 			30
-#define CUMEMCPYDTOHV2 			31
-#define CUMEMALLOCHOST  		32
-#define CUEVENTDESTROY 			33
-#define CUMODULEUNLOAD 			34
+#define CUMEMCPYDTOH                    17
+#define CUMEMSETD32                     18
+#define CUMEMFREE                       19
+#define CUMODULEGETFUNCTION             20
+#define CULAUNCHKERNEL                  21
+#define CUCTXSYNCHRONIZE                22
+#define CUEVENTCREATE                   23
+#define CUEVENTRECORD                   24
+#define CUEVENTSYNCHRONIZE              25
+#define CUEVENTELAPSEDTIME              26
+#define CUEVENTDESTROY 			27
+#define CUMODULEUNLOAD 			28
+#define CUMEMALLOCPITCH 		29
+#define CUMODULEGETGLOBAL 		30
+#define CUSTREAMCREATE 			31
+#define CUMEMCPYHTODASYNC 		32
+#define CUMEMCPYDTOHASYNC 		33
+#define CUMEMCPYDTODASYNC 		34
+#define CUSTREAMSYNCHRONIZE 		35
+#define CUSTREAMQUERY 			36
+#define CUSTREAMDESTROY 		37
 
 #define TYPE_VIRTIO_CUDA "virtio-cuda"
 
@@ -58,12 +51,12 @@ typedef struct VirtCuda {
 struct param {
         CUresult result;
 	unsigned int syscall_type;
-        size_t bytesize;
+        size_t bytesize, total_alloc;
 	CUdevice device;
 	CUcontext ctx;
 	CUmodule module;
 	CUfunction function;
-	CUdeviceptr dptr;
+	CUdeviceptr dptr,dptr1;
 	CUdevice_attribute attrib;
 	CUevent event1, event2;
 	CUstream stream;
@@ -76,7 +69,6 @@ struct param {
 	unsigned long nr_pages;
 	void *host;
 	void **args;
-	size_t *size;
-	int id;
+	size_t *size, size1, size2, size3;
 };
 #endif

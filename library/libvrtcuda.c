@@ -2,18 +2,14 @@
 #include <unistd.h>
 #include <dlfcn.h>
 #include <stdlib.h>
-#include <stdarg.h>
 #include <fcntl.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <cuda_runtime_api.h>
 #include <cuda.h>
 #include "libvrtcuda.h"
-#include <string.h>
-#include <sys/time.h>
 
+int loaded = 0;
 struct lib_data libdata;
 //not a very secure way to store each process' CUcontext
 //needs improvement
@@ -49,10 +45,115 @@ cudaError_t initialize() {
                 exit(1);
         }
 	gctx = libdata.p.ctx;
+	libdata.p.total_alloc = 0;
 out:
 	return libdata.p.result;
 }
 
+//deallocate all memory allocated to store arguments and function/.cubin names
+void freeMem(struct lib_data libd) {
+        {
+                struct argmnt_data *tn, *t = libd.args;
+                while(t != NULL) {
+                        tn = t;
+                        t = t->next;
+                        free(tn);
+                }
+        }
+
+        {
+                struct bin_data *tn, *t = libd.cubins;
+                while(t != NULL) {
+                        tn = t;
+                        t = t->next;
+                        free(tn->binname);
+                        free(tn);
+                }
+        }
+        {
+                struct func_data *tn, *t = libd.funcs;
+                while(t != NULL) {
+                        tn = t;
+                        t = t->next;
+                        free(tn->funcname);
+                        free(tn);
+                }
+        }
+        {
+                struct hostf_data *tn, *t = libd.hostfuncs;
+                while(t != NULL) {
+                        tn = t;
+                        t = t->next;
+                        free(tn);
+                }
+        }
+}
+
+//searches list for function name and return node
+//calling function retrieves .cubin name from node
+struct hostf_data *funcToBinary(const void *f, struct lib_data libd) {
+        struct hostf_data *hf = libd.hostfuncs;
+        while(hf != NULL) {
+                if (f == hf->hostfun)
+                        return hf;
+                hf = hf->next;
+        }
+        return NULL;
+}
+
+//search current directory for all CUDA binary files (.cubin)
+//extract objects (function names) from each binary file
+//store connection between functions and files
+//uses linked list - maybe not the most efficient implementation
+void registerCudaKernels(struct lib_data *libd) {
+        char buff[1024];
+        char cmd[1024];
+        libd->cubins = NULL;
+        libd->funcs = NULL;
+        libd->args = NULL;
+        FILE *fp = popen("ls | grep .cubin", "r");
+        if (fp == NULL) {
+                perror("popen");
+                exit(1);
+        }
+        while (fgets(buff, sizeof(buff)-1, fp) != NULL) {
+                size_t s = strlen(buff);
+                strcpy(cmd,"nm ");
+                strcat(cmd, buff);
+                FILE *fp1 = popen(cmd, "r");
+                if (fp1 == NULL) {
+                        perror("popen");
+                        exit(1);
+                }
+
+                struct bin_data *n = malloc(sizeof(struct bin_data));
+                n->next = libd->cubins;
+                n->length = s;
+                n->binname = malloc(s);
+                n->loaded = 0;
+                strcpy(n->binname, buff);
+                libd->cubins = n;
+
+                while (fgets(buff, sizeof(buff)-1, fp1) != NULL) {
+                        buff[strlen(buff)-1] = '\0';
+                        char *ret = strstr(buff, "_Z");
+                        if (ret != NULL) {
+                                s = strlen(ret);
+                                struct func_data *nf = malloc(sizeof(struct func_data));
+
+                                nf->next = libd->funcs;
+                                nf->length = s;
+                                nf->function = NULL;
+                                nf->bin = n;
+                                nf->funcname = malloc(strlen(ret));
+                                strcpy(nf->funcname, ret);
+                                libd->funcs = nf;
+                        }
+                }
+                pclose(fp1);
+        }
+        pclose(fp);
+}
 
 cudaError_t cudaGetLastError (void) {
 	return libdata.p.result;
@@ -115,7 +216,6 @@ cudaError_t cudaGetDeviceProperties (struct cudaDeviceProp *prop, int device) {
         if (libdata.p.result != CUDA_SUCCESS)
                 goto out;
 	prop->multiProcessorCount = libdata.p.val1;
-	
 out:
 	return libdata.p.result;
 }
@@ -132,8 +232,16 @@ cudaError_t cudaGetDevice (int *device) {
         return libdata.p.result;
 }
 
-cudaError_t cudaGetDeviceCount	(int *count) {
+cudaError_t cudaGetDeviceCount (int *count) {
 	//CUresult cuDeviceGetCount (int *count)
+        cudaError_t ret;
+        if (!libdata.isinitialized) {
+                ret = initialize();
+                if (ret != cudaSuccess)
+                        return ret;
+                libdata.isinitialized = 1;
+        }
+
         if(ioctl(libdata.fd,CUDEVICEGETCOUNT, &libdata.p)) {
 	        perror("ioctl");
 		exit(1);
@@ -141,7 +249,8 @@ cudaError_t cudaGetDeviceCount	(int *count) {
         *count = libdata.p.val1;
 	return libdata.p.result;
 }
-cudaError_t cudaMalloc(void **devPtr, size_t size) {
+
+cudaError_t cudaMalloc (void **devPtr, size_t size) {
         cudaError_t ret;
         if (!libdata.isinitialized) {
                 ret = initialize();
@@ -156,23 +265,28 @@ cudaError_t cudaMalloc(void **devPtr, size_t size) {
                 perror("ioctl");
 		exit(1);
         }
+	libdata.p.total_alloc += size;
 	*devPtr = (void *) libdata.p.dptr;
 	return libdata.p.result;
 }
-cudaError_t cudaHostAlloc (void **pHost, size_t size, unsigned int flags) {
+
+cudaError_t cudaMallocPitch (void **devPtr, size_t *pitch, size_t width, size_t height) {
 	cudaError_t ret;
-	if (!libdata.isinitialized) {
-		ret = initialize();
-		if (ret != cudaSuccess)
-			return ret;
-		libdata.isinitialized = 1;
-	}
-	//CUresult cuMemAllocHost(void **pp, size_t bytesize)
-	libdata.p.bytesize = size;
-	if(ioctl(libdata.fd,CUMEMALLOCHOST, &libdata.p)) {
-		perror("ioctl");
-	}
-        *pHost = (void *) libdata.p.host;
+        if (!libdata.isinitialized) {
+                ret = initialize();
+                if (ret != cudaSuccess)
+                        return ret;
+                libdata.isinitialized = 1;
+        }
+	//CUresult cuMemAllocPitch(CUdeviceptr *dptr, size_t *pPitch, size_t WidthInBytes, size_t Height, unsigned int ElementSizeBytes)
+	libdata.p.size1 = width;
+	libdata.p.size2 = height;
+        libdata.p.bytesize = 16;
+	if(ioctl(libdata.fd,CUMEMALLOCPITCH, &libdata.p)) {
+                perror("ioctl");
+        }
+	*devPtr = (void *) libdata.p.dptr;
+	*pitch = libdata.p.size3;
 	return libdata.p.result;
 }
 
@@ -180,7 +294,7 @@ cudaError_t cudaMemset (void *devPtr, int value, size_t count) {
         libdata.p.dptr = (CUdeviceptr) devPtr;
 	libdata.p.bytecount = value;
 	//only works for float for now
-	//CUresult cuMemsetD32  (CUdeviceptr dstDevice, unsigned int ui, size_t N)
+	//CUresult cuMemsetD32 (CUdeviceptr dstDevice, unsigned int ui, size_t N)
 	libdata.p.bytesize = count/sizeof(float);
         if(ioctl(libdata.fd,CUMEMSETD32, &libdata.p)) {
                 perror("ioctl");
@@ -188,6 +302,7 @@ cudaError_t cudaMemset (void *devPtr, int value, size_t count) {
         }
         return libdata.p.result;
 }
+
 cudaError_t cudaFree (void *devPtr) {
 	//CUresult cuMemFree (CUdeviceptr dptr)
 	libdata.p.dptr = (CUdeviceptr) devPtr;
@@ -212,7 +327,7 @@ cudaError_t cudaMemcpy(void *dst, const void *src, size_t count, enum cudaMemcpy
 		libdata.p.host = (void *)src;
 		libdata.p.dptr = (CUdeviceptr) dst;
 		libdata.p.bytesize = count;
-		if(ioctl(libdata.fd,CUMEMCPYHTODV2, &libdata.p)) {
+		if(ioctl(libdata.fd,CUMEMCPYHTOD, &libdata.p)) {
 	                perror("ioctl");
 	                exit(1);
 	        }
@@ -222,7 +337,7 @@ cudaError_t cudaMemcpy(void *dst, const void *src, size_t count, enum cudaMemcpy
                 libdata.p.host = dst;
 		libdata.p.dptr = (CUdeviceptr) src;
                 libdata.p.bytesize = count;	
-		if(ioctl(libdata.fd,CUMEMCPYDTOHV2, &libdata.p)) {
+		if(ioctl(libdata.fd,CUMEMCPYDTOH, &libdata.p)) {
                         perror("ioctl");
 	                exit(1);
                 }
@@ -233,6 +348,61 @@ cudaError_t cudaMemcpy(void *dst, const void *src, size_t count, enum cudaMemcpy
 	}	
         return libdata.p.result;	
 }
+
+cudaError_t cudaMemcpyAsync(void *dst, const void *src, size_t count, enum cudaMemcpyKind kind, cudaStream_t stream) {
+cudaError_t ret;
+        if (!libdata.isinitialized) {
+                ret = initialize();
+                if (ret != cudaSuccess)
+                        return ret;
+                libdata.isinitialized = 1;
+        }
+        libdata.p.ctx = gctx;
+        if (kind == cudaMemcpyHostToDevice) {
+                //CUresult cuMemcpyHtoD(CUdeviceptr dstDevice, const void *srcHost, size_t ByteCount)
+                libdata.p.host = (void *)src;
+                libdata.p.dptr = (CUdeviceptr) dst;
+                libdata.p.bytesize = count;
+		libdata.p.stream = stream;
+                if(ioctl(libdata.fd,CUMEMCPYHTODASYNC, &libdata.p)) {
+                        perror("ioctl");
+                        exit(1);
+                }
+	        if (libdata.p.result != CUDA_SUCCESS)
+	                exit(1);
+        }
+        else if (kind == cudaMemcpyDeviceToHost) {
+                //CUresult cuMemcpyDtoH(void *dstHost, CUdeviceptr srcDevice, size_t ByteCount)
+                libdata.p.host = dst;
+                libdata.p.dptr = (CUdeviceptr) src;
+                libdata.p.bytesize = count;
+                libdata.p.stream = stream;		
+                if(ioctl(libdata.fd,CUMEMCPYDTOHASYNC, &libdata.p)) {
+                        perror("ioctl");
+                        exit(1);
+                }
+                if (libdata.p.result != CUDA_SUCCESS)
+                        exit(1);
+        }
+	else if (kind == cudaMemcpyDeviceToDevice) {
+		libdata.p.dptr = (CUdeviceptr) dst;
+		libdata.p.dptr1 = (CUdeviceptr) src;
+		libdata.p.size1 = count;
+		libdata.p.stream = stream;
+		if(ioctl(libdata.fd,CUMEMCPYDTODASYNC, &libdata.p)) {
+                        perror("ioctl");
+                        exit(1);
+                }
+                if (libdata.p.result != CUDA_SUCCESS)
+                        exit(1);
+	}
+        else  {
+                printf("invalid memcpy kind\n");
+                return cudaErrorUnknown;
+        }
+        return libdata.p.result;
+}
+
 //intercepts function name, finds in which .cubin file the function's code is and loads the .cubin (if not already loaded)
 //doesn't get function handler yet, it needs to be done right before the launch
 void __cudaRegisterFunction(void **fatCubinHandle, const char *hostFun, char *deviceFun, const char *deviceName, int thread_limit, uint3 *tid, uint3 *bid, dim3 *bDim, dim3 *gDim, int *wSize) {
@@ -256,7 +426,6 @@ void __cudaRegisterFunction(void **fatCubinHandle, const char *hostFun, char *de
         if (!libdata.isinitialized) {
                 ret = initialize();
                 if (ret != cudaSuccess) {
-                        printf("initialize error: %d\n",ret);
                         exit(1);
 		}             
                 libdata.isinitialized = 1;
@@ -273,7 +442,6 @@ void __cudaRegisterFunction(void **fatCubinHandle, const char *hostFun, char *de
 	                exit(1);
                 }
                 if (libdata.p.result != CUDA_SUCCESS) {
-			printf("cuModuleLoad error: %d\n",libdata.p.result);
                         exit(1);
 		}
                 hf->devicefun->bin->module = libdata.p.module;
@@ -284,6 +452,7 @@ void __cudaRegisterFunction(void **fatCubinHandle, const char *hostFun, char *de
                 }
                 hf->devicefun->bin->loaded = 1;
 	}
+
 }
 
 //intercepts launch arguments (grid/block size) and stores them in structure
@@ -343,18 +512,19 @@ cudaError_t cudaLaunch(const void *func) {
 	                goto out;
 		hf->devicefun->function = libdata.p.function;
 	}
+
 /*
-	CUresult cuLaunchKernel(CUfunction f,
-				unsigned int gridDimX,
-				unsigned int gridDimY,
-				unsigned int gridDimZ,
-				unsigned int blockDimX,
-				unsigned int blockDimY,
-				unsigned int blockDimZ,
-				unsigned int sharedMemBytes,
-				CUstream hStream,
-				void ** kernelParams,
-				voidu** extra)	
+*	CUresult cuLaunchKernel(CUfunction f,
+*				unsigned int gridDimX,
+*				unsigned int gridDimY,
+*				unsigned int gridDimZ,
+*				unsigned int blockDimX,
+*				unsigned int blockDimY,
+*				unsigned int blockDimZ,
+*				unsigned int sharedMemBytes,
+*				CUstream hStream,
+*				void ** kernelParams,
+*				voidu** extra)	
 */
         libdata.p.ctx = gctx;
 	libdata.p.function = hf->devicefun->function;
@@ -379,6 +549,9 @@ cudaError_t cudaLaunch(const void *func) {
                 perror("ioctl");
                 exit(1);
         }
+	if (libdata.p.result != CUDA_SUCCESS) {
+		exit(1);
+	}
 	free(libdata.p.args);
 	free(libdata.p.size);
 out:	
@@ -443,33 +616,75 @@ cudaError_t cudaDeviceSynchronize (void) {
 	return libdata.p.result;
 }
 
+cudaError_t cudaStreamCreate (cudaStream_t *pStream) {
+	//CUresult cuStreamCreate (CUstream *phStream, unsigned int Flags)
+	if(ioctl(libdata.fd,CUSTREAMCREATE, &libdata.p)) {
+                perror("ioctl");
+                exit(1);
+        }
+        if (libdata.p.result != CUDA_SUCCESS)
+                exit(1);
+	*pStream = libdata.p.stream;
+	return libdata.p.result;
+}
+
+cudaError_t cudaStreamSynchronize(cudaStream_t stream) {
+	//CUresult cuStreamSynchronize (CUstream hStream)
+	libdata.p.stream = stream;
+	if(ioctl(libdata.fd,CUSTREAMSYNCHRONIZE, &libdata.p)) {
+                perror("ioctl");
+                exit(1);
+        }
+        if (libdata.p.result != CUDA_SUCCESS)
+                exit(1);
+        return libdata.p.result;
+}
+
+cudaError_t cudaStreamQuery (cudaStream_t stream) {
+	//CUresult cuStreamQuery (CUstream hStream)
+        libdata.p.stream = stream;
+        if(ioctl(libdata.fd,CUSTREAMQUERY, &libdata.p)) {
+                perror("ioctl");
+                exit(1);
+        }
+        if (libdata.p.result != CUDA_SUCCESS)
+		exit(1);
+        return libdata.p.result;
+}
+
+cudaError_t cudaStreamDestroy (cudaStream_t stream) {	
+	//CUresult cuStreamDestroy (CUstream hStream)
+        libdata.p.stream = stream;
+        if(ioctl(libdata.fd,CUSTREAMDESTROY, &libdata.p)) {
+                perror("ioctl");
+                exit(1);
+        }
+        if (libdata.p.result != CUDA_SUCCESS)
+                exit(1);
+        return libdata.p.result;
+}
+
 void __cudaUnregisterFatBinary() {
-	//not supported for the moment
-/*
-	//CUresult cuModuleUnload(CUmodule hmod)
+	//CUresult cuModuleUnload (CUmodule hmod)
         if(ioctl(libdata.fd,CUMODULEUNLOAD, &libdata.p)) {
                 perror("ioctl");
                 exit(1);
         }
-*/
+
 	freeMem(libdata);
 }
-//undocumented - can't know what void**
-//works if the actual routine is called using dlsym, although the routine must file internally 
+//undocumented - can't know return and argument type
+//works if the actual routine is called using dlsym
 void** __cudaRegisterFatBinary(void *fatCubin) {
 
 	registerCudaKernels(&libdata);
-
+	
         libdata.fd = open("/dev/cuda0", O_RDWR, 0);
         if (libdata.fd < 0) {
                 perror("open");
                 exit(1);
         }
 	libdata.isinitialized = 0;
-
-        char hostname[50];
-        gethostname(hostname, 50*sizeof(char));
-	libdata.p.id = hostname[strlen(hostname)-1-'0'];
 
         void *handle = dlopen ("/usr/local/cuda/lib64/libcudart.so.5.0", RTLD_LAZY);
         if (!handle) {
@@ -485,54 +700,4 @@ void** __cudaRegisterFatBinary(void *fatCubin) {
         }
         void** ret = __cudaRegisterFatBinary(fatCubin);
         return ret;	
-}
-
-//searches list for function name and return node
-//calling function retrieves .cubin name from node
-struct hostf_data *funcToBinary(const void *f, struct lib_data libd) {
-        struct hostf_data *hf = libd.hostfuncs;
-        while(hf != NULL) {
-                if (f == hf->hostfun)
-                        return hf;
-                hf = hf->next;
-        }
-        return NULL;
-}
-//deallocate all memory allocated to store arguments and function/.cubin names
-void freeMem(struct lib_data libd) {
-        {
-                struct argmnt_data *tn, *t = libd.args;
-                while(t != NULL) {
-                        tn = t;
-                        t = t->next;
-                        free(tn);
-                }
-        }
-
-        {
-                struct bin_data *tn, *t = libd.cubins;
-                while(t != NULL) {
-                        tn = t;
-                        t = t->next;
-                        free(tn->binname);
-                        free(tn);
-                }
-        }
-        {
-                struct func_data *tn, *t = libd.funcs;
-                while(t != NULL) {
-                        tn = t;
-                        t = t->next;
-                        free(tn->funcname);
-                        free(tn);
-                }
-        }
-        {
-                struct hostf_data *tn, *t = libd.hostfuncs;
-                while(t != NULL) {
-                        tn = t;
-                        t = t->next;
-                        free(tn);
-                }
-        }
 }

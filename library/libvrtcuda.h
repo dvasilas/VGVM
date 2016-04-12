@@ -56,8 +56,4 @@ struct lib_data {
         struct argmnt_data *args;
         struct param p;
 };
-
-struct hostf_data *funcToBinary(const void *f, struct lib_data libd);
-void registerCudaKernels(struct lib_data *libd);
-void freeMem(struct lib_data libd);
 #endif
