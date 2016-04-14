@@ -1,3 +1,13 @@
-# GPU Virtualization Framework
+# VGVM: Efficient GPU Capabilities in Virtual Machines
 
-In this project we address the challenge of integrating GPGPU (General Purpose Computations on GPUs) into virtualized environments. We implement a mechanism that the enables the execution of CUDA applications within Virtual Machines. The framework consists of two components : a user level library, and paravirtualized driver, which enables communication with the host's GPU driver.
+VGVM is an open-source framework which enables CUDA applications to execute within Virtual Machines running with QEMU-KVM. Using this framework, multiple VMs co-located in the same host computer can share physical GPU resources, in order to to accelerate their performance.
+
+VGVM uses paravirtualization and API forwarding techniques in order to enable CUDA applications executing in virtual environments to access the physical GPU. 
+
+To summarize, VGVM offers the following advantages:
+- It enables GPU resource sharing among co-located VMs.
+- It maintains binary compatibility, so that existing applications can use our framework without any source code modification.
+
+## How to use VGVM
+
+under construction
