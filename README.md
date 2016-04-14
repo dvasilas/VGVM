@@ -22,6 +22,8 @@ patch -p1 < VGVM/virtio_device/qemu-2.3.1_vgvm.patch
 make
 make install
 ```
+### Launch a QEMU Virtual Machine
 
+Execute QEMU using the ```-device virtio-cuda-pci``` option 
 
 under construction
