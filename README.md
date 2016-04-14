@@ -10,4 +10,18 @@ To summarize, VGVM offers the following advantages:
 
 ## How to use VGVM
 
+### Download and install QEMU
+
+Dowload QEMU source code version 2.3.1 from http://wiki.qemu.org/Download, and install using:
+
+```
+cd qemu-2.3.1
+git clone https://github.com/dimvass/VGVM.git/
+patch -p1 < VGVM/virtio_device/qemu-2.3.1_vgvm.patch
+./configure --prefix=/path/to/install/dir --enable-kvm --extra-cflags=-I/usr/local/cuda/include --disable-rdma --target-list=x86_64-softmmu
+make
+make install
+```
+
+
 under construction
