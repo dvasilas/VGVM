@@ -24,6 +24,13 @@ make install
 ```
 ### Launch a QEMU Virtual Machine
 
-Execute QEMU using the ```-device virtio-cuda-pci``` option 
+Set an environment variable named ```QEMU_NFS_PATH``` to a directory where CUDA object files (.cubin files) will be stored in order to be loaded to the GPU. CUDA object files can be accessible through a shared filesystem or simply be transferred through scp. 
+Then, execute QEMU using the ```-device virtio-cuda-pci``` option. For example a VM can be launched using a raw hard disk image name disk_image.raw:
+
+```
+export QEMU_NFS_PATH="/path/to/shared/directory"
+/path/to/install/dir/bin/qemu-system-x86_64 -enable-kvm -M pc-0.12 -m 1024 -smp 2 -drive file=disk_image.raw,format=raw,if=virtio -net nic -net user, hostfwd=tcp:127.0.0.1:22223-:22 -vnc 127.0.0.1:0 -nographic -monitor /dev/null -device virtio-cuda-pci
+```
+The VM can be accessed through ssh : ```ssh -p 22223 <user>@localhost```
 
 under construction
