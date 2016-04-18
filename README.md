@@ -10,6 +10,23 @@ To summarize, VGVM offers the following advantages:
 
 ## How to use VGVM
 
+### Load KVM Modules
+
+Install required packages:
+
+```
+apt-get install gcc make vim socat bzip2
+apt-get install zlib1g-dev libglib2.0-dev xtightvncviewer
+apt-get install autoconf libtool flex bison
+apt-get install libncurses5 -dev
+```
+
+Check for CPU virtualization extensions:
+
+```
+egrep '(vmx|svm)' /proc/cpuinfo
+```
+
 ### Install VGVM backend
 
 Dowload QEMU source code version 2.3.1 from http://wiki.qemu.org/Download, and install using:
