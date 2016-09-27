@@ -9,7 +9,7 @@ To summarize, VGVM offers the following advantages:
 - It maintains binary compatibility, so that existing applications can use our framework without any source code modification.
 
 This work has been published in the 2016 International Conference on High Performance Computing & Simulation (HPCS):
-http://ieeexplore.ieee.org/xpl/mostRecentIssue.jsp?punumber=7562293
+http://ieeexplore.ieee.org/document/7568395/
 
 ## How to use VGVM
 
