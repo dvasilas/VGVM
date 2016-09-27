@@ -8,6 +8,9 @@ To summarize, VGVM offers the following advantages:
 - It enables GPU resource sharing among co-located VMs.
 - It maintains binary compatibility, so that existing applications can use our framework without any source code modification.
 
+This work has been published in the 2016 International Conference on High Performance Computing & Simulation (HPCS):
+http://ieeexplore.ieee.org/xpl/mostRecentIssue.jsp?punumber=7562293
+
 ## How to use VGVM
 
 ### Load KVM Modules
